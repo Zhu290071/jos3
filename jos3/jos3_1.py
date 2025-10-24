@@ -324,13 +324,15 @@ class JOS3():
         to = threg.operative_temp(self._ta, self._tr, hc, hr,)                                      # 计算操作温度
         r_t = threg.dry_r(hc, hr, self._clo, pt=self._atmospheric_pressure)  # 计算干热阻
         # 计算湿热阻（单位：kPa·m2/W）
-        r_et = threg.wet_r(
+        r_et, r_ea, r_ecl, fcl = threg.wet_r(
             hc,
             self._clo,
             iclo=self._iclo,
             pt=self._atmospheric_pressure,
             ret_cl=self._ret,
+            return_components=True,
         )
+        r_ea_eff = r_ea / fcl
         #------------------------------------------------------------------
         # 体温调节
         #------------------------------------------------------------------
@@ -569,6 +571,9 @@ class JOS3():
             detailout["To"] = to  # 操作温度
             detailout["Rt"] = r_t  # 干热阻
             detailout["Ret"] = (r_et * 1000).copy()  # 湿热阻 [Pa·m2/W]
+            detailout["RetAirBoundary"] = (r_ea_eff * 1000).copy()  # 边界空气层湿阻 [Pa·m2/W]
+            detailout["RetClothing"] = (r_ecl * 1000).copy()  # 服装自身湿阻 [Pa·m2/W]
+            detailout["Fcl"] = fcl.copy()  # 服装面积系数
             detailout["Ta"] = self._ta.copy()  # 空气温度
             detailout["Tr"] = self._tr.copy()  # 辐射温度
             detailout["RH"] = self._rh.copy()  # 相对湿度
@@ -1015,8 +1020,41 @@ class JOS3():
         ) * 1000
 
     @property
+    def RetComponents(self):
+        """Return a breakdown of evaporative resistances.
+
+        Returns
+        -------
+        dict
+            Dictionary with keys ``"total"``, ``"air_boundary"``, ``"clothing"``
+            and ``"fcl"``. Resistances are expressed in ``Pa·m²/W`` while the
+            clothing area factor is dimensionless.
+        """
+
+        hc = threg.fixed_hc(
+            threg.conv_coef(self._posture, self._va, self._ta, self.Tsk, ), self._va
+        )
+        r_et, r_ea, r_ecl, fcl = threg.wet_r(
+            hc,
+            self._clo,
+            iclo=self._iclo,
+            pt=self._atmospheric_pressure,
+            ret_cl=self._ret,
+            return_components=True,
+        )
+        r_ea_eff = r_ea / fcl
+        return {
+            "total": (r_et * 1000).copy(),
+            "air_boundary": (r_ea_eff * 1000).copy(),
+            "clothing": (r_ecl * 1000).copy(),
+            "fcl": fcl.copy(),
+        }
+
+    @property
     def Wet(self):
         """
+        Getter
+    """
         Getter
 
         Returns

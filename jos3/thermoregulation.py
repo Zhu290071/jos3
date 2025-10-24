@@ -272,12 +272,13 @@ def wet_r(hc,
     Returns
     -------
     ret : float or array
-        Total evaporative thermal resistance [kPa.m2/W].
+        Total evaporative thermal resistance [kPa·m²/W].
     r_ea : float or array
-        Air boundary layer evaporative resistance [kPa.m2/W]. Returned only
-        when ``return_components`` is True.
+        Evaporative resistance of the boundary air layer prior to applying the
+        clothing area factor [kPa·m²/W]. Returned only when
+        ``return_components`` is True.
     r_ecl : float or array
-        Clothing evaporative resistance [kPa.m2/W]. Returned only when
+        Clothing evaporative resistance [kPa·m²/W]. Returned only when
         ``return_components`` is True.
     fcl : float or array
         Clothing area factor [-]. Returned only when ``return_components``
