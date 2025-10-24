@@ -1032,7 +1032,7 @@ class JOS3():
         """
 
         hc = threg.fixed_hc(
-            threg.conv_coef(self._posture, self._va, self._ta, self.Tsk, ), self._va
+            threg.conv_coef(self._posture, self._va, self._ta, self.Tsk,), self._va
         )
         r_et, r_ea, r_ecl, fcl = threg.wet_r(
             hc,
@@ -1050,11 +1050,10 @@ class JOS3():
             "fcl": fcl.copy(),
         }
 
+
     @property
     def Wet(self):
         """
-        Getter
-    """
         Getter
 
         Returns
