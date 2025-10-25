@@ -179,6 +179,9 @@ class JOS3():
         self._va = np.ones(17)*0.1  # 空气流速
         self._clo = np.zeros(17)  # 服装热阻
         self._iclo = np.ones(17) * 0.45  # 服装蒸发热阻系数
+        self._clo_includes_air_layer = False  # 输入的 clo 是否包含内部空气层
+        self._ret_includes_air_layer = False  # 输入的 ret 是否包含内部空气层
+
 
         self._posture = "standing"  # 姿势
         self._hc = None  # 对流换热系数（手动设置）
@@ -322,7 +325,13 @@ class JOS3():
         self.total_weight_loss += total_weight_loss  # 累加体重损失
         # 操作温度 [°C]，干热阻和湿热阻 [平方米·K/W]，[平方米·kPa/W]
         to = threg.operative_temp(self._ta, self._tr, hc, hr,)                                      # 计算操作温度
-        r_t = threg.dry_r(hc, hr, self._clo, pt=self._atmospheric_pressure)  # 计算干热阻
+        r_t = threg.dry_r(
+            hc,
+            hr,
+            self._clo,
+            pt=self._atmospheric_pressure,
+            clo_includes_air_layer=self._clo_includes_air_layer,
+        )  # 计算干热阻
         # 计算湿热阻（单位：kPa·m2/W）
         r_et, r_ea, r_ecl, fcl = threg.wet_r(
             hc,
@@ -330,9 +339,11 @@ class JOS3():
             iclo=self._iclo,
             pt=self._atmospheric_pressure,
             ret_cl=self._ret,
+            ret_cl_includes_air_layer=self._ret_includes_air_layer,
             return_components=True,
         )
-        r_ea_eff = r_ea / fcl
+        r_ea_eff = np.minimum(r_ea / fcl, r_et)
+
         #------------------------------------------------------------------
         # 体温调节
         #------------------------------------------------------------------
@@ -821,6 +832,15 @@ class JOS3():
             self._ret = array
 
     @property
+    def IretIncludesAirLayer(self):
+        """Return True when ``Iret`` values already include the air layer."""
+
+        return self._ret_includes_air_layer
+
+    @IretIncludesAirLayer.setter
+    def IretIncludesAirLayer(self, value):
+        self._ret_includes_air_layer = bool(value)
+    @property
     def Tr(self):
         """
         Getter
@@ -932,6 +952,16 @@ class JOS3():
     def Icl(self, inp):
         self._clo = _to17array(inp)
 
+    @property
+    def IclIncludesAirLayer(self):
+        """Return True when ``Icl`` values already include the air layer."""
+
+        return self._clo_includes_air_layer
+
+    @IclIncludesAirLayer.setter
+    def IclIncludesAirLayer(self, value):
+        self._clo_includes_air_layer = bool(value)
+
 
     @property
     def PAR(self):
@@ -998,7 +1028,12 @@ class JOS3():
         """
         hc = threg.fixed_hc(threg.conv_coef(self._posture, self._va, self._ta, self.Tsk,), self._va)
         hr = threg.fixed_hr(threg.rad_coef(self._posture,))
-        return threg.dry_r(hc, hr, self._clo)
+        return threg.dry_r(
+            hc,
+            hr,
+            self._clo,
+            clo_includes_air_layer=self._clo_includes_air_layer,
+        )
 
     @property
     def Ret(self):
@@ -1017,6 +1052,7 @@ class JOS3():
             self._iclo,
             pt=self._atmospheric_pressure,
             ret_cl=self._ret,
+            ret_cl_includes_air_layer=self._ret_includes_air_layer,
         ) * 1000
 
     @property
@@ -1032,7 +1068,7 @@ class JOS3():
         """
 
         hc = threg.fixed_hc(
-            threg.conv_coef(self._posture, self._va, self._ta, self.Tsk,), self._va
+            threg.conv_coef(self._posture, self._va, self._ta, self.Tsk, ), self._va
         )
         r_et, r_ea, r_ecl, fcl = threg.wet_r(
             hc,
@@ -1040,9 +1076,10 @@ class JOS3():
             iclo=self._iclo,
             pt=self._atmospheric_pressure,
             ret_cl=self._ret,
+            ret_cl_includes_air_layer=self._ret_includes_air_layer,
             return_components=True,
         )
-        r_ea_eff = r_ea / fcl
+        r_ea_eff = np.minimum(r_ea / fcl, r_et)
         return {
             "total": (r_et * 1000).copy(),
             "air_boundary": (r_ea_eff * 1000).copy(),
