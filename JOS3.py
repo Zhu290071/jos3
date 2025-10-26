@@ -13,8 +13,8 @@ if not os.path.exists(jos3_example_directory):
 
 # 创建模型实例
 model = jos3.JOS3(
-    height=1.736,
-    weight=69.1,
+    height=1.75,
+    weight=85,
     fat=22.9,
     age=24.5,
     sex="male",
@@ -30,17 +30,17 @@ print("设置环境条件（分段模拟）...")
 environment_segments = [
     {
         "name": "初始温和环境",
-        "duration_minutes": 30,
-        "Ta": -15,
-        "Tr": -15,
+        "duration_minutes": 360,
+        "Ta": 20,
+        "Tr": 20,
         "RH": 65,
         "Va": 0.2,
     },
     {
         "name": "初始温和环境",
         "duration_minutes": 30,
-        "Ta": -15,
-        "Tr": -15,
+        "Ta": 20,
+        "Tr": 20,
         "RH": 65,
         "Va": 0.2,
     },
@@ -51,9 +51,11 @@ environment_segments = [
 dtime = 60
 
 # 设置模型输入参数
-model.load_mass = 0.0  # 负载质量 50kg
+model.load_mass = 50  # 负载质量 50kg
 model.march_speed = 0  # 行军速度 1.11 m/s
 model.snow_depth = 0  # 雪厚度 1.0m
+model.snow_density = 0  # 雪密度 0.05-0.2 mg/m^3
+model.snow_gait_factor = 0.0035  # 步态修正系数
 model.slope = 5  # 坡度 5%
 
 # 设置服装热阻
@@ -184,6 +186,16 @@ df = pd.DataFrame(model.dict_results())
 # 添加时间与环境段信息，便于后续分析
 df["ElapsedMinutes"] = df.index * (dtime / 60)
 
+# 输出代谢率信息
+if "Met" in df.columns and not df["Met"].empty:
+    current_met = df["Met"].iloc[-1]
+    mean_met = df["Met"].mean()
+    print("- 代谢率信息：")
+    print(f"    · 当前代谢率: {current_met:.2f} W")
+    print(f"    · 平均代谢率: {mean_met:.2f} W")
+else:
+    print("警告：结果中未找到代谢率（Met）数据列。")
+
 segment_labels = ["初始条件"]
 for info in segment_summary:
     segment_labels.extend([info["name"]] * info["steps"])
@@ -296,8 +308,3 @@ else:
 csv_path = os.path.join(jos3_example_directory, "jos3_results.csv")
 model.to_csv(csv_path)
 print(f"CSV结果已保存到: {csv_path}")
-
-# 额外调试：显示所有可用的数据列
-print("\n所有可用数据列:")
-for i, col in enumerate(df.columns):
-    print(f"{i + 1:2d}. {col}")
