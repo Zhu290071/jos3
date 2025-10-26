@@ -200,6 +200,12 @@ class JOS3():
                 "ava_zero": False,                      # 是否关闭动静脉吻合
                 "shivering": False,}                    # 是否颤抖
 
+        # 行军与负重条件的默认值
+        self.load_mass = 0.0     # 负重 [kg]
+        self.march_speed = 0.0   # 行进速度 [m/s]
+        self.slope = 0.0         # 坡度 [%]
+        self.snow_depth = 0.0    # 雪深 [cm]
+
 
         threg.PRE_SHIV = 0  # 重置颤抖相关参数
         self._history = []  # 存储模拟历史数据
@@ -444,6 +450,16 @@ class JOS3():
         # 核心、肌肉、脂肪、皮肤的总产热 [W]
         qcr, qms, qfat, qsk = threg.sum_m(mbase, mwork, mshiv, mnst,)
         qall = qcr.sum() + qms.sum() + qfat.sum() + qsk.sum()       # 总产热
+
+        # 将修正的动态负重方程结果作为全身代谢率并等比例缩放各层代谢热
+        target_met = self.calculate_metabolic_rate()
+        if target_met is not None and target_met > 0 and qall > 0:
+            scale = target_met / qall
+            qcr *= scale
+            qms *= scale
+            qfat *= scale
+            qsk *= scale
+            qall = target_met
 
         #------------------------------------------------------------------
         # 其他计算
@@ -690,26 +706,45 @@ class JOS3():
         return outdict
 
     # 在JOS3类中，确保代谢率计算方法正确接受模型实例的属性
-    def calculate_metabolic_rate(self):
-        # 获取模型实例的输入参数
-        W = self._weight  # 体重
-        L = self.load_mass  # 负载质量
-        v = self.march_speed  # 行军速度
-        G = self.slope  # 坡度
-        snow_thickness = self.snow_depth  # 雪厚度
+    def calculate_metabolic_rate(self, dt=None):
+        """
+        计算代谢率 (W)，使用 Pandolf–Santee 方程并考虑雪地因素与动态响应。
+        dt: 时间步长 (秒)。若为 None 或 0，则返回稳态代谢率；否则按一阶滞后动态响应计算代谢率。
+        """
+        # 获取模型参数
+        W = self._weight  # 体重 (kg)
+        L = self.load_mass  # 负载重量 (kg)
+        v = self.march_speed  # 行走速度 (m/s)
+        G = self.slope  # 坡度 (%)
+        snow_depth = self.snow_depth  # 雪深 (cm)
 
-        # 计算地形系数 K
-        snow_thickness_m = snow_thickness / 100  # 假设输入的是厘米，转换为米
-        K = 1.3 + 0.08 * snow_thickness_m
+        # 雪深转换为地面阻力系数 η（经验公式）:contentReference[oaicite:4]{index=4}
+        eta = 1.3 + 0.08 * snow_depth  # 地面阻力系数 (无量纲)
 
-        # 计算代谢率 P
-        P_1 = 1.5 * W + 2.0 * (W + L) * (L / W) ** 2 + K * (W + L) * (1.5 * v ** 2 + 0.35 * v * G)
+        # Pandolf–Santee 方程三部分：静立、负载、行走:contentReference[oaicite:5]{index=5}
+        M_stand = 1.5 * W  # 静立代谢 (W)
+        M_load = 2.0 * (W + L) * (L / W) ** 2  # 负载代谢 (W)
+        M_walk = eta * (W + L) * (1.5 * v ** 2 + 0.35 * v * G)  # 行走代谢 (W)
+        P = M_stand + M_load + M_walk  # 总代谢率 (W)
 
-        # 计算坡度影响
-        n = np.sin(np.arctan(G / 100))  # 坡度修正，G为百分比
-        P = P_1 * n
+        # 若未给定时间步长，则按稳态返回
+        if not dt:
+            self._prev_metabolic = P  # 保存当前稳态值
+            return P
 
-        return P
+        # 第一阶动态响应：使用前一时刻代谢率进行指数平滑
+        prev = getattr(self, '_prev_metabolic', None)
+        if prev is None:
+            # 初次调用时未初始化，则直接返回当前稳态
+            self._prev_metabolic = P
+            return P
+
+        # 根据需求增加或减少选择不同时间常数 (τ_on/τ_off)
+        tau = self.tau_on if P > prev else self.tau_off
+        # 指数平滑计算新代谢率：M_new = prev + (P - prev)*(1 - exp(-dt/τ))
+        M_new = prev + (P - prev) * (1 - np.exp(-dt / tau))
+        self._prev_metabolic = M_new
+        return M_new
 
     def to_csv(self, path=None, folder=None, unit=True, meaning=True):
         """
